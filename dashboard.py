@@ -181,7 +181,6 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-
 # ==================================================
 # SECCIÓN 1 — CONTEXTO NACIONAL
 # ==================================================
@@ -344,44 +343,6 @@ st.caption(
     """
 )
 
-
-
-# ==================================================
-# SECCIÓN 3 — DISTRIBUCIÓN TERRITORIAL
-# ==================================================
-st.header(
-    f"¿Cómo se distribuyen territorialmente las condiciones laborales "
-    f"de las mujeres jornaleras agrícolas en {anio_sel}?"
-)
-
-st.warning(
-    """
-    Las estimaciones estatales son descriptivas.
-    No todas cumplen criterios estrictos de confiabilidad estadística.
-    """
-)
-
-st.dataframe(
-    tabla_estatal_sel
-    .merge(cat_ent, on="ent", how="left")
-    [
-        [
-            "descrip",
-            "indice_precariedad",
-            "precariedad_categoria",
-            "poblacion",
-            "cv_poblacion"
-        ]
-    ]
-    .rename(columns={
-        "descrip": "Entidad federativa",
-        "indice_precariedad": "Índice de precariedad",
-        "precariedad_categoria": "Categoría de precariedad",
-        "poblacion": "Población estimada",
-        "cv_poblacion": "Coeficiente de variación"
-    }),
-    use_container_width=True
-)
 
 
 # ==================================================
@@ -630,6 +591,177 @@ st.caption(
     Los colores indican la categoría de precariedad laboral por entidad y año:
     verde = baja, amarillo = media, rojo = alta.
     La persistencia territorial se define a partir de la recurrencia de estas categorías en 2023–2025.
+    """
+)
+
+# --------------------------------------------------
+# HEATMAP ESTADOS × AÑOS (INDICADOR SELECCIONABLE)
+# --------------------------------------------------
+st.subheader(
+    "Evolución reciente de las condiciones laborales por entidad federativa"
+)
+
+st.markdown(
+    """
+    El siguiente gráfico muestra la distribución territorial de **un indicador específico**
+    de las condiciones laborales de las mujeres jornaleras agrícolas
+    a lo largo del periodo 2023–2025.
+    Cada columna corresponde a un año y cada fila a una entidad federativa.
+    """
+)
+
+# --------------------------------------------------
+# SELECTOR DE INDICADOR (MAPA LIMPIO)
+# --------------------------------------------------
+mapa_indicadores = {
+    "Ingreso mediano mensual (pesos constantes 2025)": "ingreso_mediana_real_2025",
+    "Proporción con sobrejornada": "prop_sobrejornada",
+    "Proporción sin seguridad social": "prop_sin_ss"
+}
+
+label_sel = st.selectbox(
+    "Selecciona el indicador a visualizar",
+    options=list(mapa_indicadores.keys())
+)
+
+col_indicador = mapa_indicadores[label_sel]
+label_indicador = label_sel
+
+# --------------------------------------------------
+# PREPARAR DATOS PARA HEATMAP
+# --------------------------------------------------
+heatmap_base = (
+    tabla_estatal
+    .merge(cat_ent, on="ent", how="left")
+    [
+        ["descrip", "anio", col_indicador]
+    ]
+    .rename(columns={"descrip": "Entidad federativa"})
+)
+
+# Pivotear: filas = estados, columnas = años
+heatmap_pivot = (
+    heatmap_base
+    .pivot(
+        index="Entidad federativa",
+        columns="anio",
+        values=col_indicador
+    )
+    .sort_index()
+)
+
+# --------------------------------------------------
+# NORMALIZACIÓN GLOBAL (0–1)
+# --------------------------------------------------
+heatmap_norm = (
+    heatmap_pivot - heatmap_pivot.min().min()
+) / (
+    heatmap_pivot.max().max() - heatmap_pivot.min().min()
+)
+
+# --------------------------------------------------
+# CONSTRUIR HEATMAP
+# --------------------------------------------------
+# -----------------------------------------------
+# DEFINIR ESCALA DE COLOR SEGÚN EL INDICADOR
+# -----------------------------------------------
+if col_indicador == "ingreso_mediana_real_2025":
+    escala_color = "RdYlGn"      # verde = mejor ingreso
+else:
+    escala_color = "RdYlGn_r"    # rojo = mayor precariedad
+
+fig_heatmap = go.Figure(
+    data=go.Heatmap(
+        z=heatmap_norm.values,
+        x=heatmap_norm.columns.astype(str),
+        y=heatmap_norm.index,
+        colorscale=escala_color,
+        colorbar=dict(title="Nivel relativo"),
+        hovertemplate=(
+            "Entidad: %{y}<br>"
+            "Año: %{x}<br>"
+            + label_indicador
+            + ": %{customdata}<extra></extra>"
+        ),
+        customdata=heatmap_pivot.values
+    )
+)
+
+fig_heatmap.update_layout(
+    height=800,
+    xaxis_title="Año",
+    yaxis_title="Entidad federativa",
+    margin=dict(l=140, r=40, t=40, b=40)
+)
+
+st.plotly_chart(fig_heatmap, use_container_width=True)
+
+st.caption(
+    """
+    El color representa la posición relativa del valor del indicador
+    en el conjunto de entidades y años (normalización global).
+    Este gráfico es descriptivo y no implica persistencia estructural;
+    dicha persistencia se analiza en la sección siguiente.
+    """
+)
+
+# --------------------------------------------------
+# CONCENTRACIÓN DE MUJERES JORNALERAS AGRÍCOLAS (BARRAS)
+# --------------------------------------------------
+st.subheader(
+    f"Concentración de mujeres jornaleras agrícolas por entidad federativa ({anio_sel})"
+)
+
+st.markdown(
+    """
+    El gráfico muestra la **concentración relativa de mujeres jornaleras agrícolas**
+    por entidad federativa en el año seleccionado.
+    Se presentan únicamente las entidades con mayor población estimada
+    para facilitar la lectura.
+    """
+)
+
+# Preparar datos
+df_barras = (
+    tabla_estatal_sel
+    .merge(cat_ent, on="ent", how="left")
+    [["descrip", "poblacion"]]
+    .rename(columns={
+        "descrip": "Entidad federativa",
+        "poblacion": "Mujeres jornaleras agrícolas"
+    })
+    .sort_values("Mujeres jornaleras agrícolas", ascending=False)
+)
+
+# Quedarnos con top 15
+top_n = 32
+df_top = df_barras.head(top_n)
+
+# Gráfico de barras horizontal
+fig_barras = go.Figure(
+    go.Bar(
+        x=df_top["Mujeres jornaleras agrícolas"],
+        y=df_top["Entidad federativa"],
+        orientation="h",
+        marker_color="#0b5d1e"
+    )
+)
+
+fig_barras.update_layout(
+    height=600,
+    xaxis_title="Población estimada de mujeres jornaleras agrícolas",
+    yaxis_title="Entidad federativa",
+    yaxis=dict(autorange="reversed"),
+    margin=dict(l=120, r=40, t=30, b=40)
+)
+
+st.plotly_chart(fig_barras, use_container_width=True)
+
+st.caption(
+    """
+    La población corresponde a estimaciones de la ENOE para el año seleccionado.
+    El gráfico muestra concentración absoluta y no debe interpretarse como proporción
+    respecto a la población total de cada entidad.
     """
 )
 

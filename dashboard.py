@@ -618,7 +618,7 @@ st.dataframe(
     ]
     .rename(columns={"descrip": "Entidad federativa"})
     .style
-    .applymap(
+    .map(
         color_semaforo_categoria,
         subset=[2023, 2024, 2025]
     ),

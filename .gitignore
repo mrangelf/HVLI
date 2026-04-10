@@ -1,0 +1,15 @@
+# Entornos
+.venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+
+# Archivos grandes o temporales
+zip/
+Datos/tmp/
+.DS_Store
+
+# Credenciales
+.env
